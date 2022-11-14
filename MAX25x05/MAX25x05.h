@@ -50,7 +50,6 @@
 
 /*
 * MAX25x05 Classes
-*
 */
 
 
@@ -88,7 +87,9 @@ public:
 
     void disable_read_sensor_frames(void);
 
-    void getSensorPixels(int pixels[], const bool flip_sensor_pixels);
+    void getInterruptStatus(uint8_t &IntValue);
+
+    void getSensorPixelInts(int16_t pixels[], const bool flip_sensor_pixels);
 
     // Data ready flags
     volatile bool sensorDataReadyFlag = false; // Data ready flag, set by the end-of-conversion interrupt
@@ -96,7 +97,7 @@ public:
 private:
 
     void intb_handler(void);
-    int convertTwoUnsignedBytesToInt(uint8_t hi_byte, uint8_t lo_byte);
+    int16_t convertTwoUnsignedBytesToInt(uint8_t hi_byte, uint8_t lo_byte);
 
     MAX25x05_BusInterface *_BusInterface;
 
