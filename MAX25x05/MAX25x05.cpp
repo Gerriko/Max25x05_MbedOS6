@@ -81,7 +81,7 @@ void MAX25x05::set_default_register_settings() {
     INTERFACE_FUNC(reg_write)(MAX25_MAIN_CONFIG1, 0x04);            // Set EOCINTE to 1: Enables the end-of-conversion interrupt.
     INTERFACE_FUNC(reg_write)(MAX25_MAIN_CONFIG2, 0x02);            // Not sure why this is set to 0x02
 #if defined(MAX25405_DEVICE)
-    INTERFACE_FUNC(reg_write)(MAX25_SEQ_CONGIG1, 0x24);             // SDLY=2 (sample-delay times), TIM=2 (integration time for the ADC conversion)
+    INTERFACE_FUNC(reg_write)(MAX25_SEQ_CONGIG1, 0x84);             // Changed to 0x84 (was 0x24) SDLY=2 (sample-delay times), TIM=2 (integration time for the ADC conversion)
     INTERFACE_FUNC(reg_write)(MAX25_SEQ_CONFIG2, 0x8C);             // NRPT=4 (Number of Repeats), NCDS=3 (Number of Coherent Double Samples)
 #elif defined(MAX25205_DEVICE)
     INTERFACE_FUNC(reg_write)(MAX25_SEQ_CONGIG1, 0x04); // SDLY=0, TIM=2
@@ -110,16 +110,13 @@ void MAX25x05::set_default_register_settings() {
 */
 void MAX25x05::enable_read_sensor_frames(void) {
 
-        //resetGesture();
-        //resetTracking();
+    _intb.fall(callback(this, &MAX25x05::intb_handler)); // Add INTB interrupt handler
 
-        _intb.fall(callback(this, &MAX25x05::intb_handler)); // Add INTB interrupt handler
+    // Read status reg to clear interrupt
+    uint8_t status_reg;
+    INTERFACE_FUNC(reg_read)(MAX25_INT_STATUS, 1, &status_reg);
 
-        // Read status reg to clear interrupt
-        uint8_t status_reg;
-        INTERFACE_FUNC(reg_read)(0x00, 1, &status_reg);
-
-        read_sensor_frames_enabled = true;
+    read_sensor_frames_enabled = true;
 
 }
 
@@ -127,14 +124,17 @@ void MAX25x05::enable_read_sensor_frames(void) {
 * This function stops the monitoring of the INTB interrupt or polling
 */
 void MAX25x05::disable_read_sensor_frames() {
-  _intb.fall(0); // Remove interrupt handler
+    _intb.fall(0); // Remove interrupt handler
 
-  read_sensor_frames_enabled = false;
+    read_sensor_frames_enabled = false;
 
 }
 
+void MAX25x05::getInterruptStatus(uint8_t &IntValue) {
+    INTERFACE_FUNC(reg_read)(MAX25_INT_STATUS, 1, &IntValue);
+}
 
-void MAX25x05::getSensorPixels(int pixels[], const bool flip_sensor_pixels) {
+void MAX25x05::getSensorPixelInts(int16_t pixels[], const bool flip_sensor_pixels) {
   unsigned char reg_vals[NUM_SENSOR_PIXELS*2];
   INTERFACE_FUNC(reg_read)(MAX25_ADC_START_H, NUM_SENSOR_PIXELS*2, reg_vals);
 
@@ -151,17 +151,16 @@ void MAX25x05::getSensorPixels(int pixels[], const bool flip_sensor_pixels) {
   }
 }
 
-
-int MAX25x05::convertTwoUnsignedBytesToInt(uint8_t hi_byte, uint8_t lo_byte)
+int16_t MAX25x05::convertTwoUnsignedBytesToInt(uint8_t hi_byte, uint8_t lo_byte)
 {
-    int intval = (int)(hi_byte << 8 | lo_byte);
+    uint16_t intval = (uint16_t)(hi_byte << 8 | lo_byte);
+
+    if (intval & 0x8000)
+        return -(int16_t)(~intval) - 1;
+    else
+        return (int16_t)intval;
+
     // Convert unsigned to 2's complement
-    if ((1 << 15) < intval) intval -= (1 << 16);
-    return intval;
+    //if ((1 << 15) < intval) intval -= (1 << 16);
+    //return intval;
 }
-
-
-
-
-
-
