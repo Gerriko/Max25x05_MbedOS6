@@ -98,6 +98,36 @@ void gesture_lib::runDynamicGesture() {
 
     if (_reset_flag) _reset_flag = false;
 
+    interpn();
+
+    // Filter values further by applying preset thresholding values
+    // First apply the ZERO_CLAMP_THRESHOLD_FACTOR value
+    zeroPixelsBelowThreshold((int)MaxPixelValue/ZERO_CLAMP_THRESHOLD_FACTOR);
+    // Second apply the ZERO_CLAMP_THRESHOLD factor
+    zeroPixelsBelowThreshold(ZERO_CLAMP_THRESHOLD);
+
+    // Center of mass calculation
+    dynamicResult.maxpixel = MaxPixelValue;
+
+    int32_t CoM_Intensity = 0;
+    float cmx = -1.00;
+    float cmy = -1.00;
+
+    if (dynamicResult.maxpixel >= END_DETECTION_THRESHOLD) {
+        calcCenterOfMass(&cmx, &cmy, &CoM_Intensity);
+        cmx = cmx/(float)INTERP_FACTOR;
+        cmy = cmy/(float)INTERP_FACTOR * (float)DY_PIXEL_SCALE;
+        _state = GESTURE_IN_PROGRESS;
+
+    }
+    else {
+        _state = STATE_INACTIVE;
+    }
+    dynamicResult.cmx = cmx;
+    dynamicResult.cmy = cmy;    
+    dynamicResult.CoM_Intensity = CoM_Intensity;
+    dynamicResult.state = _state;
+
 }
 
 // Implement background subtraction by subtracting long exponential smoothing average from a shorter one
@@ -116,41 +146,41 @@ void gesture_lib::subtractBackground(const float alpha_short_avg, const float al
     }
 }
 
-void gesture_lib::interpn(const int w, const int h, const int interpolation_factor)
+void gesture_lib::interpn()
 {
-  int w2 = (w - 1) * interpolation_factor + 1;
-  int h2 = (h - 1) * interpolation_factor + 1;
+  //int w2 = _NUM_INTERP_COLS;
+  //int h2 = _NUM_INTERP_ROWS;
   int A, B, C, x, y;
-  float x_ratio = 1.0f / (float)interpolation_factor;
-  float y_ratio = 1.0f / (float)interpolation_factor;
+  float x_ratio = 1.0f / (float)INTERP_FACTOR;
+  float y_ratio = 1.0f / (float)INTERP_FACTOR;
 
   // First stretch in x-direction, index through each pixel of destination array. Skip rows in destination array
-  for (int i = 0; i < h; i++) {
-    for (int j = 0; j < w2; j++) {
+  for (int i = 0; i < _PixelArrayRows; i++) {
+    for (int j = 0; j < _NUM_INTERP_COLS; j++) {
       x = (int)(x_ratio * j);  // x index of original frame
-      int index = i * w + x;  // pixel index of original frame
-      if (x == w - 1) // last pixel on right edge of original frame
-        _interp_pixels[i * w2 * interpolation_factor + j] = pixels[index]; // skip rows in dest array
+      int index = i * _PixelArrayCols + x;  // pixel index of original frame
+      if (x == _PixelArrayCols - 1) // last pixel on right edge of original frame
+        _interp_pixels[i * _NUM_INTERP_COLS * INTERP_FACTOR + j] = pixels[index]; // skip rows in dest array
       else {
         A = pixels[index];
         B = pixels[index + 1];
         float x_diff = (x_ratio * j) - x; // For 2x interpolation, will be 0, 1/2, 0, 1/2...
-        _interp_pixels[i * w2 * interpolation_factor + j] = (int)(A + (B - A) * x_diff); // skip rows in dest array
+        _interp_pixels[i * _NUM_INTERP_COLS * INTERP_FACTOR + j] = (int)(A + (B - A) * x_diff); // skip rows in dest array
       }
     }
   }
   // Then stretch in y-direction, index through each pixel of destination array
-  for (int i = 0; i < h2; i++) {
-    for (int j = 0; j < w2; j++) {
+  for (int i = 0; i < _NUM_INTERP_ROWS; i++) {
+    for (int j = 0; j < _NUM_INTERP_COLS; j++) {
       y = (int)(y_ratio * i);  // y index of original frame
-      int index = y * w2 * interpolation_factor + j;  // pixel index of frame
-      if (y == h - 1) //  pixel on bottom of original frame
-        _interp_pixels[i * w2 + j] = _interp_pixels[index];
+      int index = y * _NUM_INTERP_COLS * INTERP_FACTOR + j;  // pixel index of frame
+      if (y == _PixelArrayRows - 1) //  pixel on bottom of original frame
+        _interp_pixels[i * _NUM_INTERP_COLS + j] = _interp_pixels[index];
       else {
         A = _interp_pixels[index];
-        C = _interp_pixels[index + w2 * interpolation_factor];
+        C = _interp_pixels[index + _NUM_INTERP_COLS * INTERP_FACTOR];
         float y_diff = (y_ratio * i) - y;
-        _interp_pixels[i * w2 + j] = (int16_t)(A + (C - A) * y_diff);
+        _interp_pixels[i * _NUM_INTERP_COLS + j] = (int16_t)(A + (C - A) * y_diff);
       }
     }
   }
@@ -168,13 +198,13 @@ unsigned int gesture_lib::zeroPixelsBelowThreshold(const int threshold) {
     return pixelsAboveThresholdCount;
 }
 
-void gesture_lib::calcCenterOfMass(float *cmx, float *cmy, int *totalmass)
+void gesture_lib::calcCenterOfMass(float *cmx, float *cmy, int32_t *totalmass)
 {
     int cmx_number=0, cmy_number=0;
-    for (unsigned int i = 1; i < (_NUM_INTERP_COLS*_NUM_INTERP_ROWS)+1; i++) {
-        cmx_number += (i%_NUM_INTERP_COLS)*_interp_pixels[i-1];
-        cmy_number += (i/_NUM_INTERP_COLS)*_interp_pixels[i-1];
-        *totalmass += _interp_pixels[i-1];
+    for (unsigned int i = 0; i < (_NUM_INTERP_COLS*_NUM_INTERP_ROWS); i++) {
+        cmx_number += (i%_NUM_INTERP_COLS)*_interp_pixels[i];
+        cmy_number += (i/_NUM_INTERP_COLS)*_interp_pixels[i];
+        *totalmass += _interp_pixels[i];
     }
     if (*totalmass == 0) {
         *totalmass = 1; // avoid NaN
