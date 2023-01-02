@@ -2,8 +2,8 @@
  * Copyright (c) 2019 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
  *
- * Application: Gesture Library test program BETA
- * Author: C Gerrish @November 2022
+ * Application: Gesture Mouse Library test program BETA
+ * Author: C Gerrish @December 2022
 *
 * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
 * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
@@ -13,6 +13,9 @@
 * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 * OTHER DEALINGS IN THE SOFTWARE.
 *
+* Microcontroller used: MAX32620FTHR
+* Target sensor: MAX25405 Gesture Sensor Kit
+* 
 * Except as contained in this notice, the name of Maxim Integrated
 * Products, Inc. shall not be used except as stated in the Maxim Integrated
 * Products, Inc. Branding Policy.
@@ -25,7 +28,9 @@
 */
 
 #include "mbed.h"
-#include "USBSerial.h"
+//#include "USBSerial.h"
+#include "USBMouse.h"
+#include <cmath>
 
 // Uncomment one device option for library to know which sensor is attached
 //#define MAX25205_DEVICE
@@ -68,8 +73,9 @@ int main()
 {
 
     //setup USB Serial comms for configuration option
-    USBSerial serial(true, 0x0b6a, 0x4360, 0x0001);
-    serial.set_blocking (true);
+    //USBSerial serial(true, 0x0b6a, 0x4360, 0x0001);
+    USBMouse mouse(true, ABS_MOUSE, 0x0b6a, 0x4360, 0x0001);
+    //serial.set_blocking (true);
 
     MAX25x05 max25x_1(MAXIObus_1, P5_3);            // Interrupt pin for sensor 1
     //MAX25x05 max25x_2(MAXIObus_2, P3_3);            // Interrupt pin for sensor 2
@@ -86,8 +92,6 @@ int main()
     max25x_1.enable_read_sensor_frames();
     //max25x_2.enable_read_sensor_frames();
 
-    serial.printf("\r\nMAX25405 Pixel Extraction and Prep Test: version 1\r\n");
-
     while (true) {
         // If using INTB interrupt, the sensorDataReadyFlag will be set when the end-of-conversion occurs
         if (max25x_1.sensorDataReadyFlag) {
@@ -96,12 +100,20 @@ int main()
 
             max25x_1.getSensorPixelInts(gesture_1.pixels, false);
             gesture_1.processGesture(WINDOW_FILTER_ALPHA, gesture_1.GEST_DYNAMIC);
-            
-            for (uint8_t i = 0; i < NUM_SENSOR_PIXELS; i++) {
-                serial.printf("%d,", gesture_1.pixels[i]);
+
+            //serial.printf("%u, %d, %d, %d, %d\r\n", gesture_1.dynamicResult.state, (int)(gesture_1.dynamicResult.cmx*100.0), 
+            //            (int)(gesture_1.dynamicResult.cmy*100.0), (int)sqrt((double)gesture_1.dynamicResult.CoM_Intensity), gesture_1.dynamicResult.maxpixel);
+                        
+            if (gesture_1.dynamicResult.state == 1 && gesture_1.dynamicResult.cmx >= 0 && gesture_1.dynamicResult.cmy >= 0) {
+                // Mouse movements
+                int threshold = (int)sqrt((double)gesture_1.dynamicResult.CoM_Intensity);
+                if (threshold > 50) {
+                    int16_t x = (int16_t)(gesture_1.dynamicResult.cmx*1800)+200;
+                    int16_t y = (int16_t)(gesture_1.dynamicResult.cmy*1800)+200;
+                    mouse.move(x, y);
+                }
             }
-            serial.printf("%d%d\r\n",0xFFFF,0xFFFF);            // Adding placeholder for data checksum
-            
+
             memset(gesture_1.pixels, '\0', NUM_SENSOR_PIXELS);
             
             max25x_1.sensorDataReadyFlag = false;
