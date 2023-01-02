@@ -43,7 +43,7 @@
 #include "mbed.h"
 #include <cstdint>
 
-#define DY_PIXEL_SCALE              (1.42857f) /*10.0f/7.0f*/
+#define DY_PIXEL_SCALE              (1.66667) /*10.0f/6.0f*/
 
 // Interpolation used in gesture algorithm
 #define INTERP_FACTOR               4
@@ -55,6 +55,9 @@
 #define START_DETECTION_THRESHOLD   (400u) /*Changed from 400 for 400um device*/
 #define END_DETECTION_THRESHOLD     (250u) /*Changed from 250 for 400um device*/
 #define WINDOW_FILTER_ALPHA         (0.5F)
+
+const uint8_t PIXELSECTOR[60] = {1,1,1,1,1,2,2,2,2,2,1,1,1,1,0,0,2,2,2,2,1,1,1,0,0,0,0,2,2,2,4,4,4,0,0,0,0,3,3,3,4,4,4,4,0,0,3,3,3,3,4,4,4,4,4,3,3,3,3,3};
+
 
   
 class gesture_lib
@@ -99,17 +102,19 @@ public:
 
     // Structure to store dynamic gesture results
     typedef struct {
-        uint32_t state;             // 0: inactive; 1: object detected; 2: rotation in progress
+        uint8_t state;              // 0: inactive; 1: object detected; 2: rotation in progress
         uint32_t n_sample;          // The current sample number of this gesture
         int maxpixel;               // Maximum pixel value for this frame
-        float x;                    // Object x-position
-        float y;                    // Object y-position
+        float cmx;                  // Object x-position
+        float cmy;                  // Object y-position
+        uint32_t CoM_Intensity;     // Object CoM intensity value
     } DynamicGestureResult;
 
     DynamicGestureResult dynamicResult;
 
     int16_t *pixels;
     int MaxPixelValue = -99999;
+
 
     void processGesture(const float window_filter_alpha, GestureType Gtype);
     void resetGesture(void);
@@ -118,9 +123,9 @@ private:
     void noiseWindow3Filter(const float alpha);
     void runDynamicGesture(void);
     void subtractBackground(const float alpha_short_avg, const float alpha_long_avg);
-    void interpn(const int w, const int h, const int interpolation_factor);
+    void interpn();
     unsigned int zeroPixelsBelowThreshold(const int threshold);
-    void calcCenterOfMass(float *cmx, float *cmy, int *totalmass);
+    void calcCenterOfMass(float *cmx, float *cmy, int32_t *totalmass);
 
     const uint8_t _PixelArrayCols;
     const uint8_t _PixelArrayRows;
